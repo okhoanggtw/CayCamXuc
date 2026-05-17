@@ -1,3 +1,7 @@
+// =====================================================
+// ================= SMART PLANT ========================
+// =====================================================
+
 #include <U8g2lib.h>
 #include <Wire.h>
 #include <DHT.h>
@@ -37,45 +41,64 @@ int soilPct = 0;
 int lightPct = 0;
 
 // =====================================================
+// ================= TEN CAM XUC ========================
+// =====================================================
+String tenCamXuc(int cx) {
+
+  switch(cx) {
+
+    case 0: return "TO VUI QUA!";
+    case 1: return "TO DANG ON";
+    case 2: return "TO NONG QUA!";
+    case 3: return "TO KHAT NUOC!";
+    case 4: return "TO BI UNG!";
+    case 5: return "TO BUON NGU...";
+    case 6: return "TO CHOI MAT!";
+
+    default: return "???";
+  }
+}
+
+// =====================================================
 // ================= BIỂU CẢM CUTE =====================
 // =====================================================
 void veMat(int camXuc) {
 
-  int cx = 64;
-  int cy = 32;
+  int eyeY = 26 + sin(millis()/250.0) * 2;
 
-  bool blink = ((millis() / 2200) % 2 == 0);
+  int mouthY = 47 + sin(millis()/250.0) * 2;
 
-  int talk = (millis() / 180) % 4;
+  int talk = (millis()/180)%4;
 
-  int move = sin(millis() / 250.0) * 2;
-
-  cy += move;
+  // viền
+  u8g2.drawRFrame(0,0,128,64,6);
 
   // =================================================
   // 0 = TO VUI QUA!
   // =================================================
   if (camXuc == 0) {
 
-    // mắt cười
-    u8g2.drawLine(35, 25, 45, 20);
-    u8g2.drawLine(45, 20, 55, 25);
+    u8g2.drawDisc(42, eyeY, 9);
+    u8g2.drawDisc(86, eyeY, 9);
 
-    u8g2.drawLine(73, 25, 83, 20);
-    u8g2.drawLine(83, 20, 93, 25);
+    u8g2.setDrawColor(0);
 
-    // miệng nói chuyện
+    u8g2.drawDisc(39, eyeY-2, 2);
+    u8g2.drawDisc(83, eyeY-2, 2);
+
+    u8g2.setDrawColor(1);
+
+    u8g2.drawCircle(25, 38, 4);
+    u8g2.drawCircle(103, 38, 4);
+
     if (talk == 0)
-      u8g2.drawCircle(cx, 46, 6);
+      u8g2.drawEllipse(64, mouthY, 12, 6);
 
     else if (talk == 1)
-      u8g2.drawDisc(cx, 46, 8);
-
-    else if (talk == 2)
-      u8g2.drawEllipse(cx, 46, 10, 6);
+      u8g2.drawDisc(64, mouthY, 8);
 
     else
-      u8g2.drawDisc(cx, 46, 5);
+      u8g2.drawEllipse(64, mouthY, 10, 4);
   }
 
   // =================================================
@@ -83,22 +106,24 @@ void veMat(int camXuc) {
   // =================================================
   else if (camXuc == 1) {
 
+    bool blink = ((millis()/2200)%2);
+
     if (blink) {
 
-      u8g2.drawDisc(45, 26, 3);
-      u8g2.drawDisc(83, 26, 3);
+      u8g2.drawDisc(42, eyeY, 7);
+      u8g2.drawDisc(86, eyeY, 7);
 
     } else {
 
-      u8g2.drawLine(40, 26, 50, 26);
-      u8g2.drawLine(78, 26, 88, 26);
+      u8g2.drawLine(34, eyeY, 50, eyeY);
+      u8g2.drawLine(78, eyeY, 94, eyeY);
     }
 
     if (talk % 2 == 0)
-      u8g2.drawLine(55, 46, 73, 46);
+      u8g2.drawLine(52, mouthY, 76, mouthY);
 
     else
-      u8g2.drawEllipse(cx, 46, 8, 3);
+      u8g2.drawEllipse(64, mouthY, 8, 3);
   }
 
   // =================================================
@@ -106,24 +131,21 @@ void veMat(int camXuc) {
   // =================================================
   else if (camXuc == 2) {
 
-    // mắt cau có
-    u8g2.drawLine(38, 20, 50, 28);
-    u8g2.drawLine(78, 28, 90, 20);
+    u8g2.drawEllipse(42, eyeY, 10, 7);
+    u8g2.drawEllipse(86, eyeY, 10, 7);
 
-    // miệng thở
-    if (talk == 0)
-      u8g2.drawCircle(cx, 48, 5);
+    u8g2.drawDisc(42, eyeY, 4);
+    u8g2.drawDisc(86, eyeY, 4);
 
-    else if (talk == 1)
-      u8g2.drawCircle(cx, 48, 8);
-
-    else
-      u8g2.drawCircle(cx, 48, 6);
-
-    // mồ hôi
     int sweat = (millis()/100)%12;
 
-    u8g2.drawDisc(100, 20+sweat, 2);
+    u8g2.drawDisc(106, 18+sweat, 3);
+
+    if (talk == 0)
+      u8g2.drawCircle(64, mouthY, 7);
+
+    else
+      u8g2.drawEllipse(64, mouthY, 10, 6);
   }
 
   // =================================================
@@ -131,53 +153,53 @@ void veMat(int camXuc) {
   // =================================================
   else if (camXuc == 3) {
 
-    // mắt buồn
-    u8g2.drawLine(38, 30, 50, 22);
-    u8g2.drawLine(78, 22, 90, 30);
+    u8g2.drawEllipse(42, eyeY, 12, 10);
+    u8g2.drawEllipse(86, eyeY, 12, 10);
 
-    // nước mắt
-    int tear = (millis()/120)%12;
+    u8g2.drawDisc(42, eyeY+1, 5);
+    u8g2.drawDisc(86, eyeY+1, 5);
 
-    u8g2.drawLine(45, 30, 45, 35+tear);
-    u8g2.drawLine(83, 30, 83, 35+tear);
+    u8g2.setDrawColor(0);
 
-    // miệng mếu
+    u8g2.drawDisc(39, eyeY-2, 2);
+    u8g2.drawDisc(83, eyeY-2, 2);
+
+    u8g2.setDrawColor(1);
+
+    int tear = (millis()/90)%12;
+
+    u8g2.drawLine(42, eyeY+10, 42, eyeY+15+tear);
+    u8g2.drawLine(86, eyeY+10, 86, eyeY+15+tear);
+
     if (talk % 2 == 0)
-      u8g2.drawEllipse(cx, 50, 10, 4);
+      u8g2.drawEllipse(64, mouthY+4, 11, 5);
 
     else
-      u8g2.drawEllipse(cx, 52, 8, 5);
+      u8g2.drawEllipse(64, mouthY+5, 8, 4);
   }
 
   // =================================================
-  // 4 = CUU TO VOI!
+  // 4 = TO BI UNG!
   // =================================================
   else if (camXuc == 4) {
 
-    int shake = ((millis()/100)%2)*2;
+    int wave = sin(millis()/120.0) * 2;
 
-    // mắt X_X
-    u8g2.drawLine(38+shake, 22, 48+shake, 32);
-    u8g2.drawLine(48+shake, 22, 38+shake, 32);
+    u8g2.drawCircle(42, eyeY, 10);
+    u8g2.drawCircle(86, eyeY, 10);
 
-    u8g2.drawLine(80+shake, 22, 90+shake, 32);
-    u8g2.drawLine(90+shake, 22, 80+shake, 32);
+    u8g2.drawCircle(42, eyeY, 5+wave);
+    u8g2.drawCircle(86, eyeY, 5+wave);
 
-    // miệng sốc
-    if (talk == 0)
-      u8g2.drawDisc(cx, 50, 5);
+    u8g2.drawLine(52, mouthY+4, 76, mouthY);
 
-    else if (talk == 1)
-      u8g2.drawDisc(cx, 50, 8);
+    int bubble = (millis()/150)%20;
 
-    else
-      u8g2.drawDisc(cx, 50, 6);
+    u8g2.drawCircle(100, 40-bubble, 4);
+    u8g2.drawCircle(108, 24-bubble, 2);
 
-    // bong bóng
-    int bubble = (millis()/150)%15;
-
-    u8g2.drawCircle(100, 20-bubble, 3);
-    u8g2.drawCircle(106, 10-bubble, 2);
+    u8g2.drawDisc(18, 20, 3);
+    u8g2.drawDisc(112, 18, 2);
   }
 
   // =================================================
@@ -185,29 +207,21 @@ void veMat(int camXuc) {
   // =================================================
   else if (camXuc == 5) {
 
-    // mắt ngủ
-    u8g2.drawLine(38, 28, 50, 28);
-    u8g2.drawLine(78, 28, 90, 28);
+    u8g2.drawLine(32, eyeY, 52, eyeY);
+    u8g2.drawLine(76, eyeY, 96, eyeY);
 
-    // miệng nhỏ
-    if (talk % 2 == 0)
-      u8g2.drawCircle(cx, 46, 2);
+    u8g2.drawCircle(64, mouthY, 2);
 
-    else
-      u8g2.drawCircle(cx, 48, 3);
-
-    // bong bóng ngủ
-    int bubble = 4 + (millis()/250)%5;
+    int bubble = 4 + (millis()/250)%6;
 
     u8g2.drawCircle(90, 40, bubble);
 
-    // chữ Z
     if ((millis()/500)%2) {
 
       u8g2.setFont(u8g2_font_6x10_tr);
 
-      u8g2.drawStr(98, 18, "Z");
-      u8g2.drawStr(108, 10, "Z");
+      u8g2.drawStr(100, 20, "Z");
+      u8g2.drawStr(110, 12, "Z");
     }
   }
 
@@ -216,29 +230,32 @@ void veMat(int camXuc) {
   // =================================================
   else if (camXuc == 6) {
 
-    int twitch = (millis()/120)%3;
+    int twitch = (millis()/100)%4;
 
-    // mắt chói
-    u8g2.drawLine(38, 22+twitch, 50, 32);
-    u8g2.drawLine(38, 32, 50, 22+twitch);
+    u8g2.drawLine(32, eyeY-6+twitch, 52, eyeY+6);
+    u8g2.drawLine(32, eyeY+6, 52, eyeY-6+twitch);
 
-    u8g2.drawLine(78, 22+twitch, 90, 32);
-    u8g2.drawLine(78, 32, 90, 22+twitch);
+    u8g2.drawLine(76, eyeY-6+twitch, 96, eyeY+6);
+    u8g2.drawLine(76, eyeY+6, 96, eyeY-6+twitch);
 
-    // miệng khó chịu
     if (talk == 0)
-      u8g2.drawBox(54, 48, 20, 3);
-
-    else if (talk == 1)
-      u8g2.drawBox(50, 48, 28, 4);
+      u8g2.drawBox(52, mouthY, 24, 4);
 
     else
-      u8g2.drawBox(56, 48, 16, 3);
+      u8g2.drawBox(56, mouthY, 16, 3);
 
-    // tia sáng
-    u8g2.drawLine(15, 10, 25, 20);
-    u8g2.drawLine(113, 10, 103, 20);
+    u8g2.drawLine(10, 8, 24, 20);
+    u8g2.drawLine(118, 8, 104, 20);
   }
+
+  // ===== TEN CAM XUC =====
+  u8g2.setFont(u8g2_font_6x10_tr);
+
+  String txt = tenCamXuc(camXuc);
+
+  int w = u8g2.getStrWidth(txt.c_str());
+
+  u8g2.drawStr((128-w)/2, 60, txt.c_str());
 }
 
 // =====================================================
@@ -246,25 +263,38 @@ void veMat(int camXuc) {
 // =====================================================
 int xepLoaiTong(float t, float h, int soil, int light) {
 
-  if (soil > 80) return 4;
+  // ===== BI UNG =====
+  if (soil >= 80)
+    return 4;
 
-  if (soil < 30) return 3;
+  // ===== KHAT NUOC =====
+  if (soil < 10)
+    return 3;
 
-  if (t > 35) return 2;
+  // ===== NONG =====
+  if (t > 40)
+    return 2;
 
-  if (light < 20) return 5;
+  // ===== CHOI MAT =====
+  if (light > 90)
+    return 6;
 
-  if (light > 90) return 6;
+  // ===== BUON NGU =====
+  if (light < 10)
+    return 5;
 
-  if (t >= 20 && t <= 30 &&
-      h >= 50 && h <= 70 &&
-      soil >= 60 && soil <= 70 &&
-      light >= 50 && light <= 90)
-      return 0;
+  // ===== TO VUI QUA =====
+  if (
+      t >= 24 && t <= 32 &&
+      h >= 45 && h <= 75 &&
+      soil >= 20 && soil <= 75 &&
+      light >= 35 && light <= 80
+  )
+    return 0;
 
+  // ===== TO DANG ON =====
   return 1;
 }
-
 // =====================================================
 // ================= WIFI ===============================
 // =====================================================
@@ -338,7 +368,6 @@ void loop() {
 
   mqtt.loop();
 
-  // ===== UPDATE SENSOR MOI 1 GIAY =====
   static unsigned long lastUpdate = 0;
 
   if (millis() - lastUpdate >= 1000) {
@@ -349,6 +378,7 @@ void loop() {
 
     doAm = dht.readHumidity();
 
+    // ===== SOIL =====
     digitalWrite(SOIL_POWER_PIN, HIGH);
 
     delay(10);
@@ -357,12 +387,45 @@ void loop() {
 
     digitalWrite(SOIL_POWER_PIN, LOW);
 
-    soilPct = constrain(
-      map(soilRaw, 0, 4095, 0, 100),
-      0,
-      100
-    );
+    // ===== CALIB CHO 2 QUE THEP =====
+    // ===== SOIL =====
+digitalWrite(SOIL_POWER_PIN, HIGH);
 
+delay(10);
+
+// ===== DOC NHIEU LAN CHONG NHIEU =====
+long total = 0;
+
+for(int i = 0; i < 15; i++) {
+
+  total += analogRead(SOIL_PIN);
+
+  delay(2);
+}
+
+ soilRaw = total / 15;
+
+digitalWrite(SOIL_POWER_PIN, LOW);
+
+// ===== MAP DO AM DAT =====
+// Board cua ban:
+// KHO  = gia tri thap
+// UOT  = gia tri cao
+
+soilPct = constrain(
+  map(soilRaw, 0, 4095, 0, 100),
+  0,
+  100
+);
+
+// ===== DEBUG SERIAL =====
+Serial.print("Soil Raw: ");
+Serial.println(soilRaw);
+
+Serial.print("Soil %: ");
+Serial.println(soilPct);
+
+    // ===== LIGHT =====
     int lightRaw = analogRead(LIGHT_PIN);
 
     lightPct = constrain(
@@ -371,13 +434,24 @@ void loop() {
       100
     );
 
+    // ===== CAM XUC =====
+    int cxT = xepLoaiTong(
+      nhietDo,
+      doAm,
+      soilPct,
+      lightPct
+    );
+
+    String tenCX = tenCamXuc(cxT);
+
     // ===== SEND THINGSBOARD =====
     String payload = "{";
 
     payload += "\"nhietdo\":" + String(nhietDo,1) + ",";
     payload += "\"doam\":" + String(doAm,0) + ",";
     payload += "\"dat\":" + String(soilPct) + ",";
-    payload += "\"sang\":" + String(lightPct);
+    payload += "\"sang\":" + String(lightPct) + ",";
+    payload += "\"camxuc\":\"" + tenCX + "\"";
 
     payload += "}";
 
@@ -387,26 +461,25 @@ void loop() {
     );
 
     // ===== SERIAL =====
-    Serial.println("===================================");
+    Serial.println("========================");
 
     Serial.print("Nhiet do: ");
-    Serial.print(nhietDo);
-    Serial.println(" C");
+    Serial.println(nhietDo);
 
     Serial.print("Do am KK: ");
-    Serial.print(doAm);
-    Serial.println(" %");
+    Serial.println(doAm);
 
     Serial.print("Do am dat: ");
-    Serial.print(soilPct);
-    Serial.println(" %");
+    Serial.println(soilPct);
 
     Serial.print("Anh sang: ");
-    Serial.print(lightPct);
-    Serial.println(" %");
+    Serial.println(lightPct);
+
+    Serial.print("Cam xuc: ");
+    Serial.println(tenCX);
   }
 
-  // ===== OLED ANIMATION =====
+  // ===== OLED =====
   int cxT = xepLoaiTong(
     nhietDo,
     doAm,
@@ -420,5 +493,6 @@ void loop() {
 
   u8g2.sendBuffer();
 
-  delay(2000);
+  // animation mượt
+  delay(25);
 }
