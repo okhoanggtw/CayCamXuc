@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "author": "Gemini",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-dht22", "id": "dht1", "top": -170, "left": -100, "attrs": {} },
+    { "type": "wokwi-photoresistor-sensor", "id": "ldr1", "top": 50, "left": -250, "attrs": {} },
+    {
+      "type": "wokwi-slide-potentiometer",
+      "id": "pot1",
+      "top": 150,
+      "left": -250,
+      "attrs": { "travelLength": "30" }
+    },
+    { "type": "board-ssd1306", "id": "oled1", "top": 100, "left": 250, "attrs": {} },
+    { "type": "wokwi-relay-module", "id": "relay1", "top": 250, "left": 100, "attrs": {} },
+    {
+      "type": "wokwi-led",
+      "id": "led1",
+      "top": 178.8,
+      "left": 186.2,
+      "attrs": { "color": "blue" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "res2",
+      "top": 234.35,
+      "left": 124.8,
+      "attrs": { "value": "220" }
+    }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "dht1:VCC", "esp:3V3", "red", [ "v20", "h60" ] ],
+    [ "dht1:GND", "esp:GND.1", "black", [ "v30", "h210" ] ],
+    [ "dht1:SDA", "esp:23", "green", [ "v40", "h230" ] ],
+    [ "ldr1:VCC", "esp:3V3", "red", [ "h20", "v-80" ] ],
+    [ "ldr1:GND", "esp:GND.1", "black", [ "h30", "v120" ] ],
+    [ "ldr1:AO", "esp:35", "blue", [ "h40", "v20" ] ],
+    [ "pot1:VCC", "esp:3V3", "red", [ "h25", "v-140" ] ],
+    [ "pot1:GND", "esp:GND.1", "black", [ "h40", "v-40" ] ],
+    [ "pot1:SIG", "esp:34", "orange", [ "h20", "v-120" ] ],
+    [ "oled1:GND", "esp:GND.2", "black", [ "v-30", "h-110" ] ],
+    [ "oled1:VCC", "esp:3V3", "red", [ "v-40", "h-260" ] ],
+    [ "oled1:SCL", "esp:22", "yellow", [ "v-50", "h-130" ] ],
+    [ "oled1:SDA", "esp:21", "cyan", [ "v-60", "h-150" ] ],
+    [ "relay1:VCC", "esp:5V", "red", [ "h-20", "v60", "h-140" ] ],
+    [ "relay1:IN", "esp:26", "purple", [ "h-40", "v-140" ] ],
+    [ "relay1:COM", "esp:5V", "red", [ "h40", "v-160", "h-170" ] ],
+    [ "relay1:NO", "led1:A", "blue", [ "h15", "v10" ] ],
+    [ "led1:C", "res2:2", "black", [ "v10" ] ],
+    [ "res2:1", "esp:GND.3", "black", [ "h-20", "v-70", "h-130" ] ],
+    [ "relay1:GND", "esp:GND.3", "black", [ "h0" ] ]
+  ],
+  "dependencies": {}
+}
