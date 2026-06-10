@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <U8g2lib.h>
 #include <Wire.h>
 #include <DHT.h>
@@ -5,55 +6,53 @@
 #include <PubSubClient.h>
 #include <math.h>
 
-// ================= WIFI =================
-const char* ssid     = "111";
-const char* password = "12345678";
+// ================= CONFIGURATION =================
+const char* ssid     = "111";         // <-- Đổi lại tên Wifi của bạn nếu cần
+const char* password = "12345678";    // <-- Đổi lại mật khẩu Wifi của bạn nếu cần
 
-// ================= THINGSBOARD =================
 const char* tb_host  = "mqtt.thingsboard.cloud";
 const int   tb_port  = 1883;
 const char* tb_token = "MzTCWYZkbx0YpmQuLTrs";
 
-// ================= OLED =================
+// ================= HARDWARE PIN MAP =================
+#define DHTPIN          16    // <-- Đã cập nhật sang chân RX2 (GPIO 16) chạy ổn định cực kỳ
+#define DHTTYPE         DHT11 
+#define LIGHT_PIN       35    
+#define SOIL_PIN        34    
+#define SOIL_POWER_PIN  25    
+#define RELAY_BOM       27    
+
+// Khởi tạo các đối tượng ngoại vi
 U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
-
-// ================= SENSOR =================
-#define DHTPIN         23
-#define DHTTYPE        DHT11
-#define SOIL_PIN       34
-#define SOIL_POWER_PIN 25
-#define LIGHT_PIN      35
-#define RELAY_BOM      26
-
 DHT dht(DHTPIN, DHTTYPE);
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 
-// ================= DATA =================
+// ================= SYSTEM DATA VARIABLES =================
 float nhietDo = 0;
 float doAm = 0;
 int soilPct = 0;
 int lightPct = 0;
-bool heThongBat  = true;
+bool heThongBat   = true;
 bool bomDangChay = false;
 bool bomThuCong  = false;
 unsigned long bomBatLuc = 0;
-const unsigned long BOM_THOI_GIAN = 5000;
+const unsigned long BOM_THOI_GIAN = 5000; // Thời gian giới hạn chạy bơm tự động
 
-// ================= TIMING =================
+// ================= TIMING MANAGER =================
 unsigned long lastOLED   = 0;
 unsigned long lastSensor = 0;
 unsigned long lastMQTT   = 0;
 unsigned long lastDHT    = 0;
 
-// ================= SOIL STATE MACHINE =================
+// ================= SOIL STATE MACHINE (ANTI-NOISE) =================
 enum SoilState { SOIL_IDLE, SOIL_POWER_ON, SOIL_SAMPLING, SOIL_DONE };
 SoilState soilState     = SOIL_IDLE;
 unsigned long soilTimer = 0;
 int soilSampleCount     = 0;
 long soilTotal          = 0;
 
-// ================= MQTT QUEUE =================
+// ================= MQTT ASYNCHRONOUS QUEUE SYSTEM =================
 #define QUEUE_SIZE 8
 struct MqttMsg { char topic[64]; char payload[256]; };
 MqttMsg mqttQueue[QUEUE_SIZE];
@@ -61,7 +60,7 @@ int qHead = 0, qTail = 0;
 
 void mqttEnqueue(const char* topic, const char* payload) {
   int next = (qTail + 1) % QUEUE_SIZE;
-  if (next == qHead) return;
+  if (next == qHead) return; // Hàng đợi đầy, bỏ qua tin nhắn cũ
   strncpy(mqttQueue[qTail].topic,   topic,   63);
   strncpy(mqttQueue[qTail].payload, payload, 255);
   qTail = next;
@@ -74,10 +73,10 @@ void mqttFlush() {
   qHead = (qHead + 1) % QUEUE_SIZE;
 }
 
-// ================= FreeRTOS MUTEX =================
+// ================= FreeRTOS MUTEX FOR I2C SAFE BUS =================
 SemaphoreHandle_t i2cMutex;
 
-// ================= TEN CAM XUC =================
+// ================= MAPPING EMOTION NAME =================
 String layTenCamXuc(int cx) {
   switch(cx) {
     case 0: return "TO VUI QUA!";
@@ -87,26 +86,29 @@ String layTenCamXuc(int cx) {
     case 4: return "TO BI UNG!";
     case 5: return "TO BUON NGU...";
     case 6: return "TO CHOI MAT!";
-    case 7: return "DANG TUOI CAY!"; // ← KHÔI PHỤC
+    case 7: return "DANG TUOI CAY!"; 
     default: return "TO DANG ON";
   }
 }
 
-// ================= XEP LOAI =================
+// ================= CLASSIFICATION LOGIC =================
 int xepLoaiTong(float t, float h, int soil, int light) {
-  if (soil >= 80) return 4;
-  if (soil < 20)  return 3;
-  if (t > 40)     return 2;
-  if (light > 90) return 6;
-  if (light < 10) return 5;
+  if (bomDangChay) return 7; // ƯU TIÊN 1: Nếu bơm đang chạy, ép hiển thị mặt tưới nước ngay lập tức
+  if (soil >= 80) return 4;   // Đất bị úng nước
+  if (soil < 20)  return 3;   // Đất khát nước
+  if (t > 40)     return 2;   // Trời quá nóng
+  if (light > 90) return 6;   // Ánh sáng chói mắt
+  if (light < 10) return 5;   // Trời tối buồn ngủ
+  
+  // Điều kiện lý tưởng cho cây phát triển
   if (t >= 24 && t <= 32 &&
       h >= 45 && h <= 75 &&
       soil >= 20 && soil <= 75 &&
       light >= 35 && light <= 80) return 0;
-  return 1;
+  return 1; // Trạng thái bình thường (On)
 }
 
-// ================= OLED DRAW =================
+// ================= OLED ENGINE DRAWING =================
 void oledDraw(int camXuc) {
   if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(10)) != pdTRUE) return;
 
@@ -132,24 +134,23 @@ void oledDraw(int camXuc) {
     return;
   }
 
-  // ── 7: DANG TUOI CAY ──
+  // ── 7: DANG TUOI CAY (Mặt híp sung sướng + hiệu ứng mưa rơi) ──
   else if (camXuc == 7) {
-    // Mat hip ^_^
     u8g2.drawLine(34, eyeY,   42, eyeY-5);
     u8g2.drawLine(42, eyeY-5, 50, eyeY);
     u8g2.drawLine(78, eyeY,   86, eyeY-5);
     u8g2.drawLine(86, eyeY-5, 94, eyeY);
-    // Ma phinh
+    
     u8g2.drawDisc(20, 36, 4);
     u8g2.drawDisc(108, 36, 4);
     u8g2.setDrawColor(0);
     u8g2.drawDisc(20, 36, 2);
     u8g2.drawDisc(108, 36, 2);
     u8g2.setDrawColor(1);
-    // Mieng cuoi
+    
     u8g2.drawEllipse(64, mouthY, 14, 7);
     u8g2.drawLine(50, mouthY, 78, mouthY);
-    // Giot nuoc roi
+    
     int d1 = (millis() / 80)      % 50;
     int d2 = (millis() / 70)      % 50;
     int d3 = (millis() / 90)      % 50;
@@ -260,7 +261,7 @@ void oledDraw(int camXuc) {
     u8g2.drawLine(118, 8, 104, 20);
   }
 
-  // ── CHU TEN CAM XUC ──
+  // ── IN TÊN CẢM XÚC XUỐNG ĐÁY MÀN HÌNH ──
   u8g2.setFont(u8g2_font_6x10_tr);
   String txt = layTenCamXuc(camXuc);
   int w = u8g2.getStrWidth(txt.c_str());
@@ -270,7 +271,7 @@ void oledDraw(int camXuc) {
   xSemaphoreGive(i2cMutex);
 }
 
-// ================= CALLBACK =================
+// ================= THINGSBOARD RPC RECEIVE CALLBACK =================
 void callback(char* topic, byte* payload, unsigned int length) {
   String msg = "";
   for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
@@ -284,6 +285,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   String resTopic = String(topic);
   resTopic.replace("request", "response");
 
+  // Xử lý lệnh Bật/Tắt hệ thống từ xa
   if (msg.indexOf("setHeThong") >= 0) {
     heThongBat = isTrue;
     if (!heThongBat) {
@@ -300,6 +302,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     }
   }
 
+  // Xử lý lệnh kích Bơm thủ công từ Thingsboard Web Dashboard
   if (msg.indexOf("setBom") >= 0) {
     if (isTrue) {
       bomDangChay = true;
@@ -318,7 +321,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-// ================= WIFI =================
+// ================= WIFI CONNECT ENGINE =================
 void ketNoiWifi() {
   WiFi.begin(ssid, password);
 
@@ -348,6 +351,7 @@ void ketNoiWifi() {
       u8g2.drawStr(25, 25, "WiFi OK!");
       u8g2.drawStr(10, 45, WiFi.localIP().toString().c_str());
       u8g2.sendBuffer();
+      u8g2.sendBuffer(); 
       xSemaphoreGive(i2cMutex);
     }
     delay(1500);
@@ -364,11 +368,11 @@ void ketNoiWifi() {
       xSemaphoreGive(i2cMutex);
     }
     delay(3000);
-    ESP.restart();
+    ESP.restart(); // Khởi động lại vi điều khiển nếu mất kết nối mạng
   }
 }
 
-// ================= THINGSBOARD =================
+// ================= THINGSBOARD CONNECTION =================
 void ketNoiTB() {
   mqtt.setCallback(callback);
   mqtt.setServer(tb_host, tb_port);
@@ -387,7 +391,7 @@ void ketNoiTB() {
     String cid = "ESP32-" + String(random(1000, 9999));
     if (mqtt.connect(cid.c_str(), tb_token, NULL)) {
       Serial.println("ThingsBoard OK!");
-      mqtt.subscribe("v1/devices/me/rpc/request/+");
+      mqtt.subscribe("v1/devices/me/rpc/request/+"); // Đăng ký cổng nhận lệnh RPC điều khiển
       if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         u8g2.clearBuffer();
         u8g2.drawRFrame(0, 0, 128, 64, 6);
@@ -404,41 +408,45 @@ void ketNoiTB() {
   }
 }
 
-// ================= SETUP =================
+// ================= SETUP SYSTEM =================
 void setup() {
   Serial.begin(115200);
-  i2cMutex = xSemaphoreCreateMutex();
+  i2cMutex = xSemaphoreCreateMutex(); // Tạo khóa bảo vệ Bus I2C chống nhiễu màn hình
+  
   dht.begin();
+  Wire.begin(21, 22); // Định nghĩa chân SDA=21, SCL=22
   u8g2.begin();
+  
   pinMode(SOIL_POWER_PIN, OUTPUT); digitalWrite(SOIL_POWER_PIN, LOW);
   pinMode(RELAY_BOM, OUTPUT);      digitalWrite(RELAY_BOM, LOW);
+  
   mqtt.setBufferSize(512);
   ketNoiWifi();
   ketNoiTB();
 }
 
-// ================= LOOP =================
+// ================= MAIN LOOP EXECUTION =================
 void loop() {
   unsigned long now = millis();
 
-  // 1. MQTT
+  // 1. DUY TRÌ KẾT NỐI VÀ ĐẨY HÀNG ĐỢI MQTT MẠNH MẼ
   if (!mqtt.connected()) ketNoiTB();
   mqtt.loop();
   mqttFlush();
 
-  // 2. He thong tat
+  // 2. LOGIC KHI HỆ THỐNG BỊ TẮT (OFFLINE MODE FROM WEB)
   if (!heThongBat) {
     bomDangChay = false;
     bomThuCong  = false;
     digitalWrite(RELAY_BOM, LOW);
     if (now - lastOLED >= 200) {
       lastOLED = now;
-      oledDraw(99);
+      oledDraw(99); // Vẽ màn hình tắt nguồn hình tròn gạch chéo
     }
     return;
   }
 
-  // 3. Doc DHT moi 2 giay
+  // 3. ĐỌC CẢM BIẾN DHT11 ĐỘC LẬP TẠI CHÂN 16 (MỖI 2 GIÂY)
   if (now - lastDHT >= 2000) {
     lastDHT = now;
     float t = dht.readTemperature();
@@ -447,7 +455,7 @@ void loop() {
     if (!isnan(h)) doAm    = h;
   }
 
-  // 4. Soil state machine
+  // 4. MÁY TRẠNG THÁI (STATE MACHINE) LẤY MẪU ĐỘ ẨM ĐẤT CHỐNG NHIỄU SỤT ÁP
   switch (soilState) {
     case SOIL_IDLE:
       if (now - lastSensor >= 1000) {
@@ -455,19 +463,19 @@ void loop() {
         soilTimer       = now;
         soilSampleCount = 0;
         soilTotal       = 0;
-        digitalWrite(SOIL_POWER_PIN, HIGH);
+        digitalWrite(SOIL_POWER_PIN, HIGH); // Chỉ kích cấp nguồn khi cần đo để chống rỉ que
       }
       break;
 
     case SOIL_POWER_ON:
-      if (now - soilTimer >= 10) {
+      if (now - soilTimer >= 10) { // Chờ 10ms ổn định áp bề mặt đất
         soilState = SOIL_SAMPLING;
         soilTimer = now;
       }
       break;
 
     case SOIL_SAMPLING:
-      if (now - soilTimer >= 2) {
+      if (now - soilTimer >= 2) { // Đọc 15 mẫu liên tục cách nhau 2ms lấy trung bình cộng
         soilTimer = now;
         soilTotal += analogRead(SOIL_PIN);
         soilSampleCount++;
@@ -476,36 +484,35 @@ void loop() {
       break;
 
     case SOIL_DONE: {
-      digitalWrite(SOIL_POWER_PIN, LOW);
+      digitalWrite(SOIL_POWER_PIN, LOW); // Đo xong, tắt ngay nguồn que đất
       soilPct  = constrain(map(soilTotal / 15, 0, 4095, 0, 100), 0, 100);
       lightPct = constrain(map(analogRead(LIGHT_PIN), 4095, 0, 0, 100), 0, 100);
       lastSensor = now;
       soilState  = SOIL_IDLE;
 
-      // Auto bom - relay dieu khien NGAY LAP TUC
+      // ---- LOGIC TỰ ĐỘNG BẬT BƠM KHI ĐẤT KHÔ KHAN ----
       if (soilPct < 5 && !bomDangChay) {
         bomDangChay = true;
         bomThuCong  = false;
         bomBatLuc   = now;
-        digitalWrite(RELAY_BOM, HIGH);
+        digitalWrite(RELAY_BOM, HIGH); // Đóng rơ-le kích máy bơm hoạt động
         Serial.println(">>> BOM: BAT (tu dong)");
         mqttEnqueue("v1/devices/me/telemetry", "{\"bom\":true}");
       }
 
-      // Tat bom
+      // ---- LOGIC TỰ ĐỘNG NGẮT MÁY BƠM ĐỂ BẢO VỆ CHẬU CÂY ----
       if (bomDangChay && !bomThuCong &&
           (now - bomBatLuc >= BOM_THOI_GIAN || soilPct >= 20)) {
         bomDangChay = false;
-        digitalWrite(RELAY_BOM, LOW);
+        digitalWrite(RELAY_BOM, LOW); // Ngắt rơ-le tắt bơm nước
         Serial.println(">>> BOM: TAT");
         mqttEnqueue("v1/devices/me/telemetry", "{\"bom\":false}");
       }
 
-      // Gui MQTT moi 1 giay
+      // ĐẨY TOÀN BỘ SỐ LIỆU LÊN THINGSBOARD CLOUD (MỖI 1 GIÂY)
       if (now - lastMQTT >= 1000) {
         lastMQTT = now;
 
-        // Hien trang thai thuc te cua cay, khong ep buoc hien mat 7 nua
         int cxIndex = xepLoaiTong(nhietDo, doAm, soilPct, lightPct);
         String tenCX = layTenCamXuc(cxIndex);
 
@@ -520,6 +527,7 @@ void loop() {
 
         mqttEnqueue("v1/devices/me/telemetry", pl.c_str());
 
+        // In kết quả kiểm tra lên Serial Monitor của máy tính
         Serial.println("========================");
         Serial.printf("Nhiet do : %.1f\n", nhietDo);
         Serial.printf("Do am KK : %.0f\n", doAm);
@@ -532,8 +540,8 @@ void loop() {
     }
   }
 
-  // 5. Ve OLED
-  // Giam toc do ve OLED de tranh nghen I2C va giam loi do nhieu dien (EMI) tu may bom
+  // 5. RENDERING ĐỒ HỌA MÀN HÌNH OLED
+  // Tự động tăng tốc độ quét khung hình khi bơm chạy nhằm hiển thị giọt nước rơi mượt mà nhất
   unsigned long oledInterval = bomDangChay ? 150 : 200;
   if (now - lastOLED >= oledInterval) {
     lastOLED = now;
