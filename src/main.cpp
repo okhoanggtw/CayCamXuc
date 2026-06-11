@@ -22,9 +22,9 @@ const char* tb_token = "MzTCWYZkbx0YpmQuLTrs";
 #define SOIL_POWER_PIN  25
 #define RELAY_BOM       27
 // *** GHI CHÚ RELAY ***
-// Relay đã được chuyển sang active-LOW (kích mức THẤP) để tương thích 5V:
-//   digitalWrite(RELAY_BOM, LOW)   --> BẬT bơm
-//   digitalWrite(RELAY_BOM, HIGH)  --> TẮT bơm
+// Relay 1 kênh này là active-HIGH (kích mức CAO):
+//   digitalWrite(RELAY_BOM, HIGH)  --> BẬT bơm
+//   digitalWrite(RELAY_BOM, LOW)   --> TẮT bơm
 
 U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
 DHT dht(DHTPIN, DHTTYPE);
@@ -288,15 +288,26 @@ void callback(char* topic, byte* payload, unsigned int length) {
       bomDangChay = true;
       bomThuCong  = true;
       bomBatLuc   = millis();
-      digitalWrite(RELAY_BOM, LOW);
+      oledDraw(7); // Vẽ mặt Đang tưới rồi mới ĐÓNG BĂNG màn hình
+      digitalWrite(RELAY_BOM, HIGH);
       mqttEnqueue(resTopic.c_str(), "{\"value\":true}");
       mqttEnqueue("v1/devices/me/telemetry", "{\"bom\":true}");
     } else {
       bomDangChay = false;
       bomThuCong  = false;
-      digitalWrite(RELAY_BOM, HIGH);
+      digitalWrite(RELAY_BOM, LOW);
       mqttEnqueue(resTopic.c_str(), "{\"value\":false}");
       mqttEnqueue("v1/devices/me/telemetry", "{\"bom\":false}");
+      
+      // Hard Reset I2C de sua loi lech chu
+      if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        Wire.end();
+        Wire.begin(21, 22);
+        Wire.setTimeOut(100);
+        u8g2.setBusClock(50000);
+        u8g2.begin();
+        xSemaphoreGive(i2cMutex);
+      }
     }
   }
 }
@@ -394,13 +405,15 @@ void setup() {
 
   dht.begin();
   Wire.begin(21, 22);
+  Wire.setTimeOut(100); // Chống treo I2C
+  u8g2.setBusClock(50000); // Ha toc do I2C xuong 50kHz de chong nhieu
   u8g2.begin();
 
   pinMode(SOIL_POWER_PIN, OUTPUT);
   digitalWrite(SOIL_POWER_PIN, LOW);
 
   pinMode(RELAY_BOM, OUTPUT);
-  digitalWrite(RELAY_BOM, HIGH); // Tắt bơm khi vừa khởi động (Active LOW)
+  digitalWrite(RELAY_BOM, LOW); // Tắt bơm khi vừa khởi động (Active HIGH)
 
   mqtt.setBufferSize(512);
   ketNoiWifi();
@@ -418,9 +431,19 @@ void loop() {
 
   // 2. KHI HỆ THỐNG TẮT
   if (!heThongBat) {
-    bomDangChay = false;
+    if (bomDangChay) {
+      bomDangChay = false;
+      digitalWrite(RELAY_BOM, LOW);
+      if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        Wire.end();
+        Wire.begin(21, 22);
+        Wire.setTimeOut(100);
+        u8g2.setBusClock(50000);
+        u8g2.begin();
+        xSemaphoreGive(i2cMutex);
+      }
+    }
     bomThuCong  = false;
-    digitalWrite(RELAY_BOM, LOW);
     if (now - lastOLED >= 200) {
       lastOLED = now;
       oledDraw(99);
@@ -482,7 +505,8 @@ void loop() {
         bomDangChay = true;
         bomThuCong  = false;
         bomBatLuc   = now;
-        digitalWrite(RELAY_BOM, LOW);
+        oledDraw(7); // Vẽ mặt Đang tưới rồi mới ĐÓNG BĂNG màn hình
+        digitalWrite(RELAY_BOM, HIGH);
         Serial.println(">>> BOM: BAT (tu dong)");
         mqttEnqueue("v1/devices/me/telemetry", "{\"bom\":true}");
       }
@@ -492,9 +516,19 @@ void loop() {
           (now - bomBatLuc >= BOM_THOI_GIAN || soilPct >= 10)) {
         bomDangChay    = false;
         soilIncreasing = false; // reset cờ khi bơm tắt
-        digitalWrite(RELAY_BOM, HIGH);
+        digitalWrite(RELAY_BOM, LOW);
         Serial.println(">>> BOM: TAT");
         mqttEnqueue("v1/devices/me/telemetry", "{\"bom\":false}");
+        
+        // Hard Reset I2C
+        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+          Wire.end();
+          Wire.begin(21, 22);
+          Wire.setTimeOut(100); // Chống treo I2C
+          u8g2.setBusClock(50000);
+          u8g2.begin();
+          xSemaphoreGive(i2cMutex);
+        }
       }
 
       // GỬI DỮ LIỆU THINGSBOARD (mỗi 1 giây)
@@ -528,11 +562,12 @@ void loop() {
     }
   }
 
-  // 5. RENDER OLED
-  unsigned long oledInterval = bomDangChay ? 150 : 200;
-  if (now - lastOLED >= oledInterval) {
+  // 5. RENDER OLED (ĐÓNG BĂNG KHI ĐANG BƠM ĐỂ CHỐNG NHIỄU)
+  if (now - lastOLED >= 200) {
     lastOLED = now;
-    int cxT = xepLoaiTong(nhietDo, doAm, soilPct, lightPct);
-    oledDraw(cxT);
+    if (!bomDangChay) {
+      int cxT = xepLoaiTong(nhietDo, doAm, soilPct, lightPct);
+      oledDraw(cxT);
+    }
   }
 }
