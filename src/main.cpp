@@ -491,7 +491,11 @@ void loop() {
     case SOIL_DONE: {
       digitalWrite(SOIL_POWER_PIN, LOW);
 
-      int newSoil  = constrain(map(soilTotal / 15, 0, 4095, 0, 100), 0, 100);
+      // ĐIỀU CHỈNH ĐỘ NHẠY (Tăng số 3500 lên để bớt nhạy, giảm xuống để nhạy hơn)
+      // Mốc 3500 là mức rất kém nhạy, gần như ướt sũng mới báo 100%
+      int rawADC = soilTotal / 15;
+      int newSoil  = constrain(map(rawADC, 0, 3500, 0, 100), 0, 100);
+      bool vuaMoiTang = (newSoil > soilPctPrev) && !soilIncreasing; // Cờ theo dõi khoảnh khắc đất BẮT ĐẦU tăng ẩm
       soilIncreasing = (newSoil > soilPctPrev); // ← so sánh với chu kỳ trước
       soilPctPrev    = soilPct;                  // ← lưu lại trước khi cập nhật
       soilPct        = newSoil;
@@ -500,12 +504,17 @@ void loop() {
       lastSensor = now;
       soilState  = SOIL_IDLE;
 
+      // NẾU ĐANG BƠM MÀ PHÁT HIỆN ĐẤT BẮT ĐẦU ƯỚT LÊN -> CHỈ VẼ MẶT "ĐANG TƯỚI" 1 LẦN DUY NHẤT RỒI ĐÓNG BĂNG TIẾP
+      if (bomDangChay && !bomThuCong && vuaMoiTang) {
+        oledDraw(7); 
+      }
+
       // BẬT BƠM TỰ ĐỘNG khi đất khô (ngưỡng < 1%)
       if (soilPct < 1 && !bomDangChay) {
         bomDangChay = true;
         bomThuCong  = false;
         bomBatLuc   = now;
-        oledDraw(7); // Vẽ mặt Đang tưới rồi mới ĐÓNG BĂNG màn hình
+        oledDraw(3); // Vẽ mặt TỚ KHÁT NƯỚC rồi mới ĐÓNG BĂNG màn hình
         digitalWrite(RELAY_BOM, HIGH);
         Serial.println(">>> BOM: BAT (tu dong)");
         mqttEnqueue("v1/devices/me/telemetry", "{\"bom\":true}");
